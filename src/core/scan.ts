@@ -1,4 +1,4 @@
-import { findSkills, type SkillFile } from './find.ts';
+import { findSkills } from './find.ts';
 import { sortSkills, type Repository, type Skill } from './model.ts';
 import { parseSkill } from './parse.ts';
 
@@ -19,26 +19,33 @@ export type ScanResult = { repository: Repository; skills: Skill[]; warnings: st
 export async function scan(source: Source): Promise<ScanResult> {
   const files = findSkills(source.paths, source.repository.name);
   // The files are read at the same time: on GitHub, each one is a request.
-  const results = await Promise.all(files.map((file) => readSkill(source, file)));
-  return {
-    repository: source.repository,
-    skills: sortSkills(results.flatMap((result) => (result.skill ? [result.skill] : []))),
-    warnings: [...source.warnings, ...results.flatMap((result) => (result.warning ? [result.warning] : []))],
-  };
-}
-
-async function readSkill(source: Source, file: SkillFile): Promise<{ skill?: Skill; warning?: string }> {
-  const bytes = await source.read(file.path);
-  if (!bytes) return { warning: `${file.path}: listed, but not found at the scanned commit; skipped` };
-  const parsed = parseSkill(new TextDecoder().decode(bytes));
-  const skill: Skill = {
-    id: `${source.repository.id}:${file.path}`,
-    repository: source.repository.id,
-    path: file.path,
-    name: parsed.name ?? file.name,
-    description: parsed.description,
-    commit: source.repository.commit,
-    copies: file.copies,
-  };
-  return { skill, warning: parsed.warning && `${file.path}: ${parsed.warning}` };
+  const contents = await Promise.all(files.map((file) => source.read(file.path)));
+  const warnings = [...source.warnings];
+  // Identical content is one skill: the first path, by path order, keeps it; the others are copies.
+  const skills = new Map<string, Skill>();
+  files.forEach((file, index) => {
+    const bytes = contents[index];
+    if (!bytes) {
+      warnings.push(`${file.path}: listed, but not found at the scanned commit; skipped`);
+      return;
+    }
+    const text = new TextDecoder().decode(bytes);
+    const original = skills.get(text);
+    if (original) {
+      original.copies.push(file.path);
+      return;
+    }
+    const parsed = parseSkill(text);
+    if (parsed.warning) warnings.push(`${file.path}: ${parsed.warning}`);
+    skills.set(text, {
+      id: `${source.repository.id}:${file.path}`,
+      repository: source.repository.id,
+      path: file.path,
+      name: parsed.name ?? file.name,
+      description: parsed.description,
+      commit: source.repository.commit,
+      copies: [],
+    });
+  });
+  return { repository: source.repository, skills: sortSkills([...skills.values()]), warnings };
 }
