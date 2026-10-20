@@ -1,7 +1,8 @@
 # Skill Atlas
 
 Every agent skill in a repository: `./skill-atlas scan` finds each `SKILL.md` and prints its name,
-description and link.
+description and link. An organization URL, `https://github.com/JetBrains`, scans every repository:
+the skills grouped by repository, a copy in another repository named `owner/repo:path`.
 
 ```console
 $ npm ci

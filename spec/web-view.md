@@ -2,10 +2,11 @@
 `npm run web` (or `node src/web.ts [port]`) serves the page at `http://127.0.0.1:3000/`.
 Prints the result **at once**; *nothing is stored*. `GITHUB_TOKEN`, optional: as for the CLI.
 ## Page
-- A text field for a **GitHub repository URL** and a *Scan* button; the form submits `GET /?repo=<URL>`
+- A text field for a **GitHub repository or organization URL** and a *Scan* button; the form submits `GET /?repo=<URL>`
 - The result, *the same shape as the CLI*: `owner/repo · N skills`, then each skill's
   **name** — the description's *first sentence*, its **link** (pinning the scanned commit),
   `also in <paths>` for copies; sorted by **name**
+- An organization: `<owner> · N skills in M repositories`, then each repository's heading and skills, as the CLI prints them
 - Warnings appear under the list; a *thin client*, the core does the work
 ## Details
 - Server-rendered HTML, no client script; local directories are *not* served

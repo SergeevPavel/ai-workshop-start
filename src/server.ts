@@ -1,14 +1,14 @@
 // The web view's server: one page, served over node:http. Each request scans anew; nothing is
-// stored. Only GitHub repositories: a web page does not list local directories.
+// stored. Only GitHub repositories and organizations: a web page does not list local directories.
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { AtlasError } from './core/errors.ts';
-import { scan, type Source } from './core/scan.ts';
+import { scan, scanOrganization, type OrganizationSource, type Source } from './core/scan.ts';
 import { page } from './page.ts';
 
 export type WebOptions = {
-  /** Opens the repository the field names. */
-  open(input: string): Promise<Source>;
+  /** Opens the repository, or the organization, the field names. */
+  open(input: string): Promise<Source | OrganizationSource>;
   /** 0, the default, picks a free port. */
   port?: number;
   host?: string;
@@ -23,7 +23,9 @@ export function createHandler({ open }: Pick<WebOptions, 'open'>) {
     const repo = url.searchParams.get('repo')?.trim() ?? '';
     if (!repo) return { status: 200, body: page({ repo }) };
     try {
-      return { status: 200, body: page({ repo, result: await scan(await open(repo)) }) };
+      const source = await open(repo);
+      const result = 'organization' in source ? await scanOrganization(source) : await scan(source);
+      return { status: 200, body: page({ repo, result }) };
     } catch (error) {
       if (!(error instanceof AtlasError)) throw error;
       return { status: 400, body: page({ repo, error: error.message }) };

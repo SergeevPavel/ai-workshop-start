@@ -1,17 +1,18 @@
-// The web page: a field for a GitHub repository URL and, once scanned, the skills in the same
-// shape as the CLI prints them. Server-rendered, no client script; everything is escaped.
-import { firstSentence, skillLink, type Repository, type Skill } from './core/model.ts';
-import type { ScanResult } from './core/scan.ts';
+// The web page: a field for a GitHub repository or organization URL and, once scanned, the skills
+// in the same shape as the CLI prints them. Server-rendered, no client script; everything is escaped.
+import { count, firstSentence, skillLink, type Repository, type Skill } from './core/model.ts';
+import type { OrganizationScanResult, ScanResult } from './core/scan.ts';
 
 export type PageModel = {
   /** What the field holds. */
   repo: string;
-  result?: ScanResult;
+  result?: ScanResult | OrganizationScanResult;
   error?: string;
 };
 
 export function page({ repo, result, error }: PageModel): string {
-  const title = result ? `${result.repository.id} · Skill Atlas` : 'Skill Atlas';
+  const scanned = result && ('organization' in result ? result.organization : result.repository.id);
+  const title = scanned ? `${scanned} · Skill Atlas` : 'Skill Atlas';
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -23,9 +24,9 @@ export function page({ repo, result, error }: PageModel): string {
 <body>
 <main>
 <h1>Skill Atlas</h1>
-<p>Every <code>SKILL.md</code> in a GitHub repository: its name, description and link.</p>
+<p>Every <code>SKILL.md</code> in a GitHub repository, or an organization: its name, description and link.</p>
 <form method="get" action="/">
-<label for="repo">GitHub repository URL</label>
+<label for="repo">GitHub repository or organization URL</label>
 <input id="repo" name="repo" type="text" value="${escape(repo)}" placeholder="https://github.com/JetBrains/kotlin" required autofocus>
 <button type="submit">Scan</button>
 </form>
@@ -37,20 +38,34 @@ ${result ? section(result) : ''}
 `;
 }
 
-/** `owner/repo · N skills`, each skill as the CLI prints it, then the warnings. */
-function section({ repository, skills, warnings }: ScanResult): string {
-  const lines = [
-    '<section class="result">',
-    `<h2 class="repository">${escape(repository.id)} · ${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}</h2>`,
+/**
+ * `owner/repo · N skills` and each skill as the CLI prints it; an organization: its heading,
+ * then each repository's. The warnings come last.
+ */
+function section(result: ScanResult | OrganizationScanResult): string {
+  const lines = ['<section class="result">'];
+  if ('organization' in result) {
+    const skills = result.repositories.reduce((sum, { skills }) => sum + skills.length, 0);
+    const heading = `${result.organization} · ${count(skills, 'skill')} in ${count(result.repositories.length, 'repository', 'repositories')}`;
+    lines.push(`<h2 class="organization">${escape(heading)}</h2>`);
+    for (const { repository, skills } of result.repositories) lines.push(...list(repository, skills, 'h3'));
+  } else {
+    lines.push(...list(result.repository, result.skills, 'h2'));
+  }
+  if (result.warnings.length > 0) {
+    lines.push('<ul class="warnings">', ...result.warnings.map((warning) => `<li>warning: ${escape(warning)}</li>`), '</ul>');
+  }
+  lines.push('</section>');
+  return lines.join('\n');
+}
+
+function list(repository: Repository, skills: Skill[], heading: 'h2' | 'h3'): string[] {
+  return [
+    `<${heading} class="repository">${escape(repository.id)} · ${count(skills.length, 'skill')}</${heading}>`,
     '<ul class="skills">',
     ...skills.flatMap((skill) => item(repository, skill)),
     '</ul>',
   ];
-  if (warnings.length > 0) {
-    lines.push('<ul class="warnings">', ...warnings.map((warning) => `<li>warning: ${escape(warning)}</li>`), '</ul>');
-  }
-  lines.push('</section>');
-  return lines.join('\n');
 }
 
 function item(repository: Repository, skill: Skill): string[] {
@@ -78,6 +93,7 @@ label { grid-column: 1 / -1; font-weight: 600; }
 input { font: inherit; padding: .5rem .75rem; min-width: 0; }
 button { font: inherit; padding: .5rem 1.25rem; cursor: pointer; }
 .error { color: #b3261e; font-weight: 600; }
+.organization { font-size: 1.2rem; }
 .repository { font-size: 1.1rem; }
 .skills, .warnings { list-style: none; padding: 0; }
 .skills li { padding: .5rem 0; border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent); }

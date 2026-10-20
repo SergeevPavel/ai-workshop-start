@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// The web view: `node src/web.ts [port]`, a page with a field for a GitHub repository URL and
-// the skills it finds, in the CLI's shape. GITHUB_TOKEN works as for the CLI.
+// The web view: `node src/web.ts [port]`, a page with a field for a GitHub repository or
+// organization URL and the skills it finds, in the CLI's shape. GITHUB_TOKEN works as for the CLI.
 import { openGitHub } from './core/github.ts';
 import { startWeb } from './server.ts';
 
