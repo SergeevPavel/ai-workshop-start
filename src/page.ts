@@ -1,5 +1,6 @@
 // The web page: a field for a GitHub repository URL and, once scanned, the skills in the same
-// shape as the CLI prints them. Server-rendered, no client script; everything is escaped.
+// shape as the CLI prints them. Server-rendered; the only script is the live filter, which hides
+// list items and marks the matches in the page. Everything is escaped.
 import { firstSentence, skillLink, type Repository, type Skill } from './core/model.ts';
 import type { ScanResult } from './core/scan.ts';
 
@@ -30,21 +31,34 @@ export function page({ repo, result, error }: PageModel): string {
 <button type="submit">Scan</button>
 </form>
 ${error ? `<p class="error" role="alert">${escape(error)}</p>` : ''}
+${result ? FILTER_FIELD : ''}
 ${result ? section(result) : ''}
 </main>
+${result ? '<script type="module" src="/filter.js"></script>' : ''}
 </body>
 </html>
 `;
 }
 
-/** `owner/repo · N skills`, each skill as the CLI prints it, then the warnings. */
+/** The filter field, above the result; the script in /filter.js does the filtering, live. */
+const FILTER_FIELD = `<p class="filter">
+<label for="filter">Filter skills</label>
+<input id="filter" type="search" placeholder="words of the name or description, e.g. commit" autocomplete="off">
+</p>`;
+
+/**
+ * `owner/repo · N skills`, each skill as the CLI prints it, then the warnings. The count, the
+ * hidden `No skill matches.` and the marks in each name and description are the filter script's.
+ */
 function section({ repository, skills, warnings }: ScanResult): string {
+  const count = `${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`;
   const lines = [
     '<section class="result">',
-    `<h2 class="repository">${escape(repository.id)} · ${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}</h2>`,
+    `<h2 class="repository">${escape(repository.id)} · <span class="count">${count}</span></h2>`,
     '<ul class="skills">',
     ...skills.flatMap((skill) => item(repository, skill)),
     '</ul>',
+    '<p class="empty" hidden>No skill matches.</p>',
   ];
   if (warnings.length > 0) {
     lines.push('<ul class="warnings">', ...warnings.map((warning) => `<li>warning: ${escape(warning)}</li>`), '</ul>');
@@ -78,6 +92,10 @@ label { grid-column: 1 / -1; font-weight: 600; }
 input { font: inherit; padding: .5rem .75rem; min-width: 0; }
 button { font: inherit; padding: .5rem 1.25rem; cursor: pointer; }
 .error { color: #b3261e; font-weight: 600; }
+.filter { display: grid; gap: .5rem; margin: 1.5rem 0 0; }
+.empty { opacity: .7; }
+mark { background: #ffe066; color: inherit; border-radius: 2px; }
+@media (prefers-color-scheme: dark) { mark { background: #8a6d00; } }
 .repository { font-size: 1.1rem; }
 .skills, .warnings { list-style: none; padding: 0; }
 .skills li { padding: .5rem 0; border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent); }

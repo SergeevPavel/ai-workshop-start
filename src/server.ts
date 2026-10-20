@@ -1,5 +1,6 @@
 // The web view's server: one page, served over node:http. Each request scans anew; nothing is
 // stored. Only GitHub repositories: a web page does not list local directories.
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { AtlasError } from './core/errors.ts';
@@ -14,11 +15,16 @@ export type WebOptions = {
   host?: string;
 };
 
-export type Answer = { status: number; body: string };
+/** HTML unless `type` says otherwise. */
+export type Answer = { status: number; body: string; type?: string };
 
-/** Answers `GET /` and `GET /?repo=<URL>`; anything else is 404. */
+/** The page's only script, the live filter; read once, served as is. */
+const FILTER_SCRIPT = readFileSync(new URL('./client/filter.js', import.meta.url), 'utf8');
+
+/** Answers `GET /`, `GET /?repo=<URL>` and `GET /filter.js`; anything else is 404. */
 export function createHandler({ open }: Pick<WebOptions, 'open'>) {
   return async (url: URL): Promise<Answer> => {
+    if (url.pathname === '/filter.js') return { status: 200, type: 'text/javascript; charset=utf-8', body: FILTER_SCRIPT };
     if (url.pathname !== '/') return { status: 404, body: page({ repo: '', error: `Not found: ${url.pathname}` }) };
     const repo = url.searchParams.get('repo')?.trim() ?? '';
     if (!repo) return { status: 200, body: page({ repo }) };
@@ -37,8 +43,8 @@ export async function startWeb(options: WebOptions) {
   const host = options.host ?? '127.0.0.1';
   const server = createServer(async (request, response) => {
     try {
-      const { status, body } = await handle(new URL(request.url ?? '/', `http://${host}`));
-      response.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' }).end(body);
+      const { status, body, type } = await handle(new URL(request.url ?? '/', `http://${host}`));
+      response.writeHead(status, { 'Content-Type': type ?? 'text/html; charset=utf-8' }).end(body);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       response.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' }).end(`Unexpected error: ${message}\n`);
