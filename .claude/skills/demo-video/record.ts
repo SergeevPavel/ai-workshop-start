@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Records a short video of the web view: starts the server, opens the page, hands it to
-// docs/demo/<feature>/scenario.ts and saves the video next to it. Headless, so the same on macOS,
-// Linux and CI.
+// docs/demo/<feature>/scenario.ts and saves the video next to it, with a GIF of it for the pull
+// request. Headless, so the same on macOS, Linux and CI.
 //
-//   node .claude/skills/demo-video/record.ts <feature> [--recorded] [--webm] [--size 1280x720]
+//   node .claude/skills/demo-video/record.ts <feature> [--recorded] [--size 1280x720]
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -31,12 +31,11 @@ const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     recorded: { type: 'boolean', default: false },
-    webm: { type: 'boolean', default: false },
     size: { type: 'string', default: '1280x720' },
   },
 });
 
-const usage = 'Usage: node .claude/skills/demo-video/record.ts <feature> [--recorded] [--webm] [--size 1280x720]';
+const usage = 'Usage: node .claude/skills/demo-video/record.ts <feature> [--recorded] [--size 1280x720]';
 const [feature] = positionals;
 if (positionals.length !== 1 || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(feature)) {
   console.error(`Expected one feature name in kebab-case, e.g. copies-list\n\n${usage}`);
@@ -115,28 +114,34 @@ try {
   const webm = await video!.path();
 
   const mp4 = join(folder, 'demo.mp4');
+  const gif = join(folder, 'demo.gif');
   const kept = join(folder, 'demo.webm');
-  // One video per feature: a re-record MUST NOT leave the other format behind.
-  rmSync(mp4, { force: true });
-  rmSync(kept, { force: true });
-  if (values.webm) {
-    copyFileSync(webm, kept);
-    console.log(kept);
-  } else {
+  // One recording per feature: a re-record MUST NOT leave an older file behind.
+  for (const file of [mp4, gif, kept]) rmSync(file, { force: true });
+  const ffmpeg = (...args: string[]) => {
+    const run = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', webm, ...args], { stdio: 'inherit' });
+    return !run.error && run.status === 0;
+  };
+  const converted =
     // H.264 in .mp4 plays everywhere, QuickTime included; WebM does not.
-    const ffmpeg = spawnSync(
-      'ffmpeg',
-      ['-y', '-loglevel', 'error', '-i', webm, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', mp4],
-      { stdio: 'inherit' },
+    ffmpeg('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', mp4) &&
+    // The GIF is for the pull request: GitHub shows an image inline, a video only as a link.
+    // 10 fps, 960 px wide and a palette from the changes between frames keep it under a few MB;
+    // no dithering, as the page is flat colour and dithering would only add noise and bytes.
+    ffmpeg(
+      '-vf',
+      'fps=10,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];' +
+        '[b][p]paletteuse=dither=none:diff_mode=rectangle',
+      gif,
     );
-    if (ffmpeg.error || ffmpeg.status !== 0) {
-      rmSync(mp4, { force: true });
-      copyFileSync(webm, kept);
-      console.error(`ffmpeg failed or is not installed; kept the WebM: ${kept}`);
-      process.exitCode = 1;
-    } else {
-      console.log(mp4);
-    }
+  if (converted) {
+    console.log(`${mp4}\n${gif}`);
+  } else {
+    rmSync(mp4, { force: true });
+    rmSync(gif, { force: true });
+    copyFileSync(webm, kept);
+    console.error(`ffmpeg failed or is not installed; kept the WebM, no GIF: ${kept}`);
+    process.exitCode = 1;
   }
 } finally {
   await browser.close();

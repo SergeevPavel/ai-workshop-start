@@ -47,7 +47,7 @@ Issue: $ARGUMENTS
 
 - The change is visible in the web view → record it with the project's `demo-video` skill
   (`.claude/skills/demo-video`), into `docs/demo/<feature>/`. Otherwise skip this step.
-- Prefer `--recorded`. Check the video as that skill says.
+- Prefer `--recorded`. Check the video and the GIF as that skill says.
 - The demo folder goes into the same commit as the change.
 
 ## 8. Pull request
@@ -56,10 +56,14 @@ Issue: $ARGUMENTS
 - `git push -u origin HEAD`.
 - `gh pr create -R SergeevPavel/ai-workshop-start --base main --title "<subject>" --body "<body>"`.
 - Body: what changed and why in a few lines, then `Fixes ndkoval/ai-workshop-start#<n>`.
-- With a demo, add `Demo: https://github.com/SergeevPavel/ai-workshop-start/blob/<sha>/docs/demo/<feature>/demo.mp4`
-  (or `demo.webm`). `<sha>` is the pushed commit, `git rev-parse HEAD`: the link MUST survive the branch's deletion.
-  `gh` cannot upload attachments, so GitHub shows a link, not an inline player.
+- With a demo, embed the GIF, then link the video:
+  ```
+  ![Demo](https://raw.githubusercontent.com/SergeevPavel/ai-workshop-start/<sha>/docs/demo/<feature>/demo.gif)
+  Video: https://github.com/SergeevPavel/ai-workshop-start/blob/<sha>/docs/demo/<feature>/demo.mp4
+  ```
+  `<sha>` is the pushed commit, `git rev-parse HEAD`: the links MUST survive the branch's deletion.
+  `gh` cannot upload attachments, and GitHub plays no video in a description; it does show a committed GIF inline.
 
 ## 9. Report
 
-PR URL, spec cases added or changed, test result, demo link if any, and anything left open.
+PR URL, spec cases added or changed, test result, demo GIF and video links if any, and anything left open.
