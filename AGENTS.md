@@ -8,4 +8,4 @@ Integration tests for every case in the spec.
 
 ## Commands
 - `npm ci`: first, in a fresh checkout
-- `npm test`: the tests
+- `npm test`: the tests. The demo tests (`docs/demo`) need Docker outside the Playwright image

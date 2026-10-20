@@ -47,8 +47,9 @@ Issue: $ARGUMENTS
 
 - The change is visible in the web view → record it with the project's `demo-video` skill
   (`.claude/skills/demo-video`), into `docs/demo/<feature>/`. Otherwise skip this step.
-- Prefer `--recorded`. Check the video and the GIF as that skill says.
-- The demo folder goes into the same commit as the change.
+- Check the video, the GIF and the goldens as that skill says.
+- An existing demo fails in `npm test` because the change is intended → re-record that demo too.
+- The demo folders go into the same commit as the change.
 
 ## 8. Pull request
 

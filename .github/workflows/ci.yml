@@ -12,6 +12,8 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # The demo goldens are screenshots from this image. Its tag MUST match `playwright` in package-lock.json.
+    container: mcr.microsoft.com/playwright:v1.63.0-noble
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -22,6 +24,13 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # A failed demo leaves its actual screenshots here, to compare with the goldens.
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: demo-screenshots
+          path: test-results/demo/
+          if-no-files-found: ignore
       # The real CLI on the fixture repository, as a user would run it: it must exit 0.
       - name: Smoke test
         run: |
