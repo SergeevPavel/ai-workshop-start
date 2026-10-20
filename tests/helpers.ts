@@ -27,19 +27,27 @@ const EXAMPLE: Recording = {
   },
 };
 
-/** The fixture directory as a GitHub repository, JetBrains/fixture: three skills, one malformed. */
-const FIXTURE_PATHS = ['.agents/skills/release-checklist/SKILL.md', '.claude/skills/commits/SKILL.md', '.github/skills/code-style/SKILL.md'];
+/**
+ * The fixture directory as a GitHub repository, JetBrains/fixture: three skills, one malformed, and
+ * code-style twice, so one has a copy. Each path maps to the fixture file GitHub answers for it.
+ */
+const FIXTURE_FILES: Record<string, string> = {
+  '.agents/skills/release-checklist/SKILL.md': '.agents/skills/release-checklist/SKILL.md',
+  '.claude/skills/code-style/SKILL.md': '.github/skills/code-style/SKILL.md',
+  '.claude/skills/commits/SKILL.md': '.claude/skills/commits/SKILL.md',
+  '.github/skills/code-style/SKILL.md': '.github/skills/code-style/SKILL.md',
+};
 const FIXTURE_REPOSITORY: Recording = {
   'https://api.github.com/repos/JetBrains/fixture': { status: 200, body: { full_name: 'JetBrains/fixture', default_branch: 'main' } },
   'https://api.github.com/repos/JetBrains/fixture/commits/main': { status: 200, body: { sha: EXAMPLE_COMMIT } },
   'https://api.github.com/search/code?q=filename:SKILL.md+repo:JetBrains/fixture&per_page=100&page=1': {
     status: 200,
-    body: { total_count: FIXTURE_PATHS.length, items: FIXTURE_PATHS.map((path) => ({ path })) },
+    body: { total_count: Object.keys(FIXTURE_FILES).length, items: Object.keys(FIXTURE_FILES).map((path) => ({ path })) },
   },
   ...Object.fromEntries(
-    FIXTURE_PATHS.map((path) => [
+    Object.entries(FIXTURE_FILES).map(([path, file]) => [
       `https://raw.githubusercontent.com/JetBrains/fixture/${EXAMPLE_COMMIT}/${path}`,
-      { status: 200, body: readFileSync(join(FIXTURE, path), 'utf8') },
+      { status: 200, body: readFileSync(join(FIXTURE, file), 'utf8') },
     ]),
   ),
 };

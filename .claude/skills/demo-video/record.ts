@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Records docs/demo/<feature>/scenario.ts: the video, a GIF of it for the pull request and the
 // golden screenshots, next to it. Records in the Playwright image, through Docker outside it;
-// converts on the host.
+// converts on the host. The goldens come from a second run, without the video, as the tests run
+// the scenario; see runDemo.
 //
 //   node .claude/skills/demo-video/record.ts <feature> [--size 1280x720]
 import { spawnSync } from 'node:child_process';
@@ -38,11 +39,12 @@ const webm = join(folder, 'demo.webm');
 for (const file of [mp4, gif, webm]) rmSync(file, { force: true });
 if (inPlaywrightImage) {
   await runDemo(feature, { video: webm, width, height });
+  await runDemo(feature, { write: true, width, height });
 } else {
   const docker = inDocker([
     '--input-type=module',
     '-e',
-    "const [feature, video, width, height] = process.argv.slice(1); await (await import('./tests/demo.ts')).runDemo(feature, { video, width: +width, height: +height });",
+    "const [feature, video, width, height] = process.argv.slice(1); const { runDemo } = await import('./tests/demo.ts'); await runDemo(feature, { video, width: +width, height: +height }); await runDemo(feature, { write: true, width: +width, height: +height });",
     feature,
     relative(join(DEMOS, '../..'), webm),
     String(width),

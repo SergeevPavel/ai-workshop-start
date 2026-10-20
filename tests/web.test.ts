@@ -188,6 +188,14 @@ test('an empty field shows the whole list again, N skills, nothing highlighted',
   assert.doesNotMatch(page.marked().join('\n'), /<mark>/);
 });
 
+test('the page is self-contained: an inline stylesheet, no external stylesheet, web font or image', async () => {
+  for (const path of ['/', '/?repo=https://github.com/JetBrains/fixture', '/?repo=./fixture']) {
+    const { html } = await get(path);
+    assert.match(html, /<style>[\s\S]+<\/style>/, path);
+    assert.doesNotMatch(html, /<link\b|<img\b|@import|@font-face|url\(/, path);
+  }
+});
+
 test('unreachable repository, or not a GitHub URL → a clear message in the page, status 400', async () => {
   const offline = await get('/?repo=https://github.com/JetBrains/not-answered');
   assert.equal(offline.status, 400);
