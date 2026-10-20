@@ -2,16 +2,18 @@
 // from tests/helpers.ts.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, before, test } from 'node:test';
+import { install } from '../src/client/filter.js';
 import { openGitHub } from '../src/core/github.ts';
 import { startWeb } from '../src/server.ts';
 import { atlas, EXAMPLE_COMMIT, github } from './helpers.ts';
 
 const WEB = fileURLToPath(new URL('../src/web.ts', import.meta.url));
+const FILTER_SCRIPT = fileURLToPath(new URL('../src/client/filter.js', import.meta.url));
 
 let web: Awaited<ReturnType<typeof startWeb>>;
 // As src/web.ts opens repositories: GitHub only, here through code search, with a token.
@@ -23,12 +25,13 @@ async function get(path: string) {
   return { status: response.status, type: response.headers.get('content-type'), html: await response.text() };
 }
 
-/** The text of the result section, one line per CLI line: tags dropped, entities decoded. */
+/** The text of the result section, one line per CLI line: hidden and tags dropped, entities decoded. */
 function resultText(html: string): string[] {
   const section = /<section class="result">([\s\S]*?)<\/section>/.exec(html);
   assert.ok(section, 'the page has a result section');
   return section[1]
     .split('\n')
+    .filter((line) => !/^<[a-z]+[^>]* hidden>/.test(line))
     .map((line) => decode(line.replace(/<[^>]*>/g, '')).trim())
     .filter(Boolean);
 }
@@ -72,65 +75,92 @@ test('the same shape as the CLI: every skill sorted by name, the warnings under 
   assert.match(scanned.html, /<ul class="warnings">\n<li>warning: \.agents\/skills\/release-checklist\/SKILL\.md: malformed front matter: /);
 });
 
-const FIXTURE_LINK = (path: string) => `https://github.com/JetBrains/fixture/blob/${EXAMPLE_COMMIT}/${path}`;
-const FIXTURE_WARNING = /^warning: \.agents\/skills\/release-checklist\/SKILL\.md: malformed front matter: /;
+/**
+ * The elements the filter script touches, read off the served HTML: enough of a document to run
+ * the real script in Node, with no browser.
+ */
+function document(html: string) {
+  const items = [...html.matchAll(/<li class="skill" data-name="([^"]*)" data-description="([^"]*)">/g)].map(
+    ([, name, description]) => ({ hidden: false, dataset: { name: decode(name), description: decode(description) } }),
+  );
+  const count = { textContent: decode(/<span class="count">([^<]*)<\/span>/.exec(html)?.[1] ?? '') };
+  const empty = { hidden: /<p class="empty" hidden>/.test(html) };
+  const listeners: Record<string, () => void> = {};
+  const field = { value: '', addEventListener: (type: string, listener: () => void) => void (listeners[type] = listener) };
+  const root = {
+    getElementById: (id: string) => (id === 'filter' ? field : null),
+    querySelector: (selector: string) => ({ '.count': count, '.empty': empty })[selector] ?? null,
+    querySelectorAll: (selector: string) => (selector === '.skills > li' ? items : []),
+  };
+  install(root);
+  return {
+    type(text: string) {
+      field.value = text;
+      listeners.input?.();
+    },
+    shown: () => items.filter((item) => !item.hidden).map((item) => item.dataset.name),
+    count: () => count.textContent,
+    message: () => !empty.hidden,
+  };
+}
 
-test('&filter=<text>: the skills whose name or description has the characters in order, M of N', async () => {
-  // "cmt": commits by name; code-style by "committing" in its description; not release-checklist.
-  const filtered = await get('/?repo=https://github.com/JetBrains/fixture&filter=cmt');
-  assert.equal(filtered.status, 200);
-  assert.match(filtered.html, /<form method="get" action="\/" class="filter">\n<input type="hidden" name="repo" value="https:\/\/github\.com\/JetBrains\/fixture">/);
-  assert.match(filtered.html, /<input id="filter" name="filter" type="search" value="cmt"/);
-  const lines = resultText(filtered.html);
-  assert.deepEqual(lines.slice(0, -1), [
-    'JetBrains/fixture · 2 of 3 skills',
-    "code-style — Follow the project's code style.",
-    FIXTURE_LINK('.github/skills/code-style/SKILL.md'),
-    'commits — Write commit messages the way this repository does.',
-    FIXTURE_LINK('.claude/skills/commits/SKILL.md'),
-  ]);
-  assert.match(lines.at(-1) ?? '', FIXTURE_WARNING);
+test('a Filter field above the list and its script; the repository is fetched once, by the scan', async () => {
+  const scanned = await get('/?repo=https://github.com/JetBrains/fixture');
+  assert.equal(scanned.status, 200);
+  assert.match(scanned.html, /<\/form>\n+<p class="filter">\n<label for="filter">Filter skills<\/label>\n<input id="filter" type="search"[^>]*>\n<\/p>\n<section class="result">/);
+  assert.match(scanned.html, /<script type="module" src="\/filter\.js"><\/script>/);
+  const script = await get('/filter.js');
+  assert.equal(script.status, 200);
+  assert.equal(script.type, 'text/javascript; charset=utf-8');
+  assert.equal(script.html, readFileSync(FILTER_SCRIPT, 'utf8'));
+  // Filtering is the page's: the script never asks the network, and the server knows no filter.
+  assert.doesNotMatch(script.html, /\bfetch\b|XMLHttpRequest|location\./);
+  const withQuery = await get('/?repo=https://github.com/JetBrains/fixture&filter=zzz');
+  assert.deepEqual(resultText(withQuery.html), resultText(scanned.html));
+  const home = await get('/');
+  assert.doesNotMatch(home.html, /class="filter"|filter\.js/);
+});
+
+test('typing filters the list live: the characters in order in the name or the description, M of N', async () => {
+  const page = document((await get('/?repo=https://github.com/JetBrains/fixture')).html);
+  assert.deepEqual(page.shown(), ['code-style', 'commits', 'release-checklist']);
+  assert.equal(page.count(), '3 skills');
+  page.type('cmt'); // commits by name; code-style by "committing" in its description
+  assert.deepEqual(page.shown(), ['code-style', 'commits']);
+  assert.equal(page.count(), '2 of 3 skills');
+  assert.equal(page.message(), false);
+  page.type('cmtw'); // the list narrows as the text grows: "the way" is in commits' description only
+  assert.deepEqual(page.shown(), ['commits']);
+  assert.equal(page.count(), '1 of 3 skills');
 });
 
 test('the filter ignores case and spaces', async () => {
-  const filtered = await get('/?repo=https://github.com/JetBrains/fixture&filter=Release+Check');
-  assert.equal(filtered.status, 200);
-  const lines = resultText(filtered.html);
-  assert.deepEqual(lines.slice(0, -1), [
-    'JetBrains/fixture · 1 of 3 skills',
-    'release-checklist',
-    FIXTURE_LINK('.agents/skills/release-checklist/SKILL.md'),
-  ]);
+  const page = document((await get('/?repo=https://github.com/JetBrains/fixture')).html);
+  page.type('Release Check');
+  assert.deepEqual(page.shown(), ['release-checklist']);
+  assert.equal(page.count(), '1 of 3 skills');
+  page.type('CODE STYLE');
+  assert.deepEqual(page.shown(), ['code-style']);
 });
 
 test('nothing matches → "No skill matches.", the warnings stay', async () => {
-  const empty = await get('/?repo=https://github.com/JetBrains/fixture&filter=zzz');
-  assert.equal(empty.status, 200);
-  const lines = resultText(empty.html);
-  assert.deepEqual(lines.slice(0, -1), ['JetBrains/fixture · 0 of 3 skills', 'No skill matches.']);
-  assert.match(lines.at(-1) ?? '', FIXTURE_WARNING);
-  assert.match(empty.html, /<p class="empty">No skill matches\.<\/p>/);
+  const scanned = await get('/?repo=https://github.com/JetBrains/fixture');
+  assert.match(scanned.html, /<\/ul>\n<p class="empty" hidden>No skill matches\.<\/p>\n<ul class="warnings">\n<li>warning: /);
+  const page = document(scanned.html);
+  assert.equal(page.message(), false);
+  page.type('zzz');
+  assert.deepEqual(page.shown(), []);
+  assert.equal(page.count(), '0 of 3 skills');
+  assert.equal(page.message(), true);
 });
 
-test('an empty filter, or one without a result, changes nothing; the field keeps the text, escaped', async () => {
-  const unfiltered = await get('/?repo=https://github.com/JetBrains/fixture');
-  const blank = await get('/?repo=https://github.com/JetBrains/fixture&filter=+++');
-  assert.equal(blank.status, 200);
-  assert.deepEqual(resultText(blank.html), resultText(unfiltered.html));
-  assert.match(blank.html, /<input id="filter" name="filter" type="search" value=""/);
-
-  const home = await get('/?filter=cmt');
-  assert.equal(home.status, 200);
-  assert.doesNotMatch(home.html, /class="result"|class="filter"/);
-
-  const offline = await get('/?repo=https://github.com/JetBrains/not-answered&filter=cmt');
-  assert.equal(offline.status, 400);
-  assert.doesNotMatch(offline.html, /class="result"|class="filter"/);
-
-  const injected = await get(`/?repo=https://github.com/JetBrains/example&filter=${encodeURIComponent('<b>"x"</b>')}`);
-  assert.equal(injected.status, 200);
-  assert.doesNotMatch(injected.html, /<b>/);
-  assert.match(injected.html, /<input id="filter" name="filter" type="search" value="&lt;b&gt;&quot;x&quot;&lt;\/b&gt;"/);
+test('an empty field shows the whole list again, N skills', async () => {
+  const page = document((await get('/?repo=https://github.com/JetBrains/fixture')).html);
+  page.type('zzz');
+  page.type('   ');
+  assert.deepEqual(page.shown(), ['code-style', 'commits', 'release-checklist']);
+  assert.equal(page.count(), '3 skills');
+  assert.equal(page.message(), false);
 });
 
 test('unreachable repository, or not a GitHub URL → a clear message in the page, status 400', async () => {
@@ -150,6 +180,8 @@ test('what the user typed is escaped, in the field and in the message', async ()
   assert.doesNotMatch(injected.html, /<script>/);
   assert.match(injected.html, /value="&lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt;"/);
   assert.match(injected.html, /Not a GitHub repository URL: &lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt;<\/p>/);
+  const scanned = await get('/?repo=https://github.com/JetBrains/fixture');
+  assert.match(scanned.html, /<li class="skill" data-name="code-style" data-description="Follow the project&#39;s code style\. /);
 });
 
 test('another path → 404', async () => {

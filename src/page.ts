@@ -1,18 +1,17 @@
 // The web page: a field for a GitHub repository URL and, once scanned, the skills in the same
-// shape as the CLI prints them. Server-rendered, no client script; everything is escaped.
-import { firstSentence, matchesSkill, skillLink, type Repository, type Skill } from './core/model.ts';
+// shape as the CLI prints them. Server-rendered; the only script is the live filter, which hides
+// list items in the page. Everything is escaped.
+import { firstSentence, skillLink, type Repository, type Skill } from './core/model.ts';
 import type { ScanResult } from './core/scan.ts';
 
 export type PageModel = {
   /** What the field holds. */
   repo: string;
-  /** The fuzzy filter over the result's skills; empty keeps them all. */
-  filter?: string;
   result?: ScanResult;
   error?: string;
 };
 
-export function page({ repo, filter = '', result, error }: PageModel): string {
+export function page({ repo, result, error }: PageModel): string {
   const title = result ? `${result.repository.id} · Skill Atlas` : 'Skill Atlas';
   return `<!doctype html>
 <html lang="en">
@@ -32,31 +31,35 @@ export function page({ repo, filter = '', result, error }: PageModel): string {
 <button type="submit">Scan</button>
 </form>
 ${error ? `<p class="error" role="alert">${escape(error)}</p>` : ''}
-${result ? filterForm(repo, filter) : ''}
-${result ? section(result, filter) : ''}
+${result ? FILTER_FIELD : ''}
+${result ? section(result) : ''}
 </main>
+${result ? '<script type="module" src="/filter.js"></script>' : ''}
 </body>
 </html>
 `;
 }
 
-/** The filter field, above the result; the repository travels along, hidden. */
-function filterForm(repo: string, filter: string): string {
-  return `<form method="get" action="/" class="filter">
-<input type="hidden" name="repo" value="${escape(repo)}">
+/** The filter field, above the result; the script in /filter.js does the filtering, live. */
+const FILTER_FIELD = `<p class="filter">
 <label for="filter">Filter skills</label>
-<input id="filter" name="filter" type="search" value="${escape(filter)}" placeholder="fuzzy: cmt finds commits">
-<button type="submit">Filter</button>
-</form>`;
-}
+<input id="filter" type="search" placeholder="fuzzy: cmt finds commits" autocomplete="off">
+</p>`;
 
-/** `owner/repo · N skills`, or `M of N` when filtered; each skill as the CLI prints it, then the warnings. */
-function section({ repository, skills, warnings }: ScanResult, filter: string): string {
-  const shown = filter ? skills.filter((skill) => matchesSkill(skill, filter)) : skills;
-  const count = `${filter ? `${shown.length} of ` : ''}${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`;
-  const lines = ['<section class="result">', `<h2 class="repository">${escape(repository.id)} · ${count}</h2>`];
-  if (shown.length > 0) lines.push('<ul class="skills">', ...shown.flatMap((skill) => item(repository, skill)), '</ul>');
-  else lines.push('<p class="empty">No skill matches.</p>');
+/**
+ * `owner/repo · N skills`, each skill as the CLI prints it, then the warnings. The count and the
+ * hidden `No skill matches.` are the filter script's to update.
+ */
+function section({ repository, skills, warnings }: ScanResult): string {
+  const count = `${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`;
+  const lines = [
+    '<section class="result">',
+    `<h2 class="repository">${escape(repository.id)} · <span class="count">${count}</span></h2>`,
+    '<ul class="skills">',
+    ...skills.flatMap((skill) => item(repository, skill)),
+    '</ul>',
+    '<p class="empty" hidden>No skill matches.</p>',
+  ];
   if (warnings.length > 0) {
     lines.push('<ul class="warnings">', ...warnings.map((warning) => `<li>warning: ${escape(warning)}</li>`), '</ul>');
   }
@@ -66,7 +69,7 @@ function section({ repository, skills, warnings }: ScanResult, filter: string): 
 
 function item(repository: Repository, skill: Skill): string[] {
   const link = skillLink(repository, skill);
-  const lines = ['<li>'];
+  const lines = [`<li class="skill" data-name="${escape(skill.name)}" data-description="${escape(skill.description)}">`];
   const name = `<span class="name">${escape(skill.name)}</span>`;
   lines.push(skill.description ? `${name} — <span class="description">${escape(firstSentence(skill.description))}</span>` : name);
   lines.push(`<a class="link" href="${escape(link)}">${escape(link)}</a>`);
@@ -89,7 +92,7 @@ label { grid-column: 1 / -1; font-weight: 600; }
 input { font: inherit; padding: .5rem .75rem; min-width: 0; }
 button { font: inherit; padding: .5rem 1.25rem; cursor: pointer; }
 .error { color: #b3261e; font-weight: 600; }
-.filter { margin-bottom: 0; }
+.filter { display: grid; gap: .5rem; margin: 1.5rem 0 0; }
 .empty { opacity: .7; }
 .repository { font-size: 1.1rem; }
 .skills, .warnings { list-style: none; padding: 0; }
