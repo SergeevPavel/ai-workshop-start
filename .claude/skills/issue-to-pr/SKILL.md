@@ -43,13 +43,23 @@ Issue: $ARGUMENTS
 - `npm test` and `npm run typecheck` MUST pass. Do not open a PR with failures.
 - Review the diff with the project's `code-review` skill (`.claude/skills/code-review`); fix what it finds.
 
-## 7. Pull request
+## 7. Demo
+
+- The change is visible in the web view → record it with the project's `demo-video` skill
+  (`.claude/skills/demo-video`), into `docs/demo/<feature>/`. Otherwise skip this step.
+- Prefer `--recorded`. Check the video as that skill says.
+- The demo folder goes into the same commit as the change.
+
+## 8. Pull request
 
 - Commit: imperative subject. Body only for a fact the diff cannot show.
 - `git push -u origin HEAD`.
 - `gh pr create -R SergeevPavel/ai-workshop-start --base main --title "<subject>" --body "<body>"`.
 - Body: what changed and why in a few lines, then `Fixes ndkoval/ai-workshop-start#<n>`.
+- With a demo, add `Demo: https://github.com/SergeevPavel/ai-workshop-start/blob/<sha>/docs/demo/<feature>/demo.mp4`
+  (or `demo.webm`). `<sha>` is the pushed commit, `git rev-parse HEAD`: the link MUST survive the branch's deletion.
+  `gh` cannot upload attachments, so GitHub shows a link, not an inline player.
 
-## 8. Report
+## 9. Report
 
-PR URL, spec cases added or changed, test result, and anything left open.
+PR URL, spec cases added or changed, test result, demo link if any, and anything left open.
