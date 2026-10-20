@@ -16,14 +16,15 @@ export type WebOptions = {
 
 export type Answer = { status: number; body: string };
 
-/** Answers `GET /` and `GET /?repo=<URL>`; anything else is 404. */
+/** Answers `GET /` and `GET /?repo=<URL>[&filter=<text>]`; anything else is 404. */
 export function createHandler({ open }: Pick<WebOptions, 'open'>) {
   return async (url: URL): Promise<Answer> => {
     if (url.pathname !== '/') return { status: 404, body: page({ repo: '', error: `Not found: ${url.pathname}` }) };
     const repo = url.searchParams.get('repo')?.trim() ?? '';
+    const filter = url.searchParams.get('filter')?.trim() ?? '';
     if (!repo) return { status: 200, body: page({ repo }) };
     try {
-      return { status: 200, body: page({ repo, result: await scan(await open(repo)) }) };
+      return { status: 200, body: page({ repo, filter, result: await scan(await open(repo)) }) };
     } catch (error) {
       if (!(error instanceof AtlasError)) throw error;
       return { status: 400, body: page({ repo, error: error.message }) };

@@ -1,16 +1,18 @@
 // The web page: a field for a GitHub repository URL and, once scanned, the skills in the same
 // shape as the CLI prints them. Server-rendered, no client script; everything is escaped.
-import { firstSentence, skillLink, type Repository, type Skill } from './core/model.ts';
+import { firstSentence, matchesSkill, skillLink, type Repository, type Skill } from './core/model.ts';
 import type { ScanResult } from './core/scan.ts';
 
 export type PageModel = {
   /** What the field holds. */
   repo: string;
+  /** The fuzzy filter over the result's skills; empty keeps them all. */
+  filter?: string;
   result?: ScanResult;
   error?: string;
 };
 
-export function page({ repo, result, error }: PageModel): string {
+export function page({ repo, filter = '', result, error }: PageModel): string {
   const title = result ? `${result.repository.id} · Skill Atlas` : 'Skill Atlas';
   return `<!doctype html>
 <html lang="en">
@@ -30,22 +32,31 @@ export function page({ repo, result, error }: PageModel): string {
 <button type="submit">Scan</button>
 </form>
 ${error ? `<p class="error" role="alert">${escape(error)}</p>` : ''}
-${result ? section(result) : ''}
+${result ? filterForm(repo, filter) : ''}
+${result ? section(result, filter) : ''}
 </main>
 </body>
 </html>
 `;
 }
 
-/** `owner/repo · N skills`, each skill as the CLI prints it, then the warnings. */
-function section({ repository, skills, warnings }: ScanResult): string {
-  const lines = [
-    '<section class="result">',
-    `<h2 class="repository">${escape(repository.id)} · ${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}</h2>`,
-    '<ul class="skills">',
-    ...skills.flatMap((skill) => item(repository, skill)),
-    '</ul>',
-  ];
+/** The filter field, above the result; the repository travels along, hidden. */
+function filterForm(repo: string, filter: string): string {
+  return `<form method="get" action="/" class="filter">
+<input type="hidden" name="repo" value="${escape(repo)}">
+<label for="filter">Filter skills</label>
+<input id="filter" name="filter" type="search" value="${escape(filter)}" placeholder="fuzzy: cmt finds commits">
+<button type="submit">Filter</button>
+</form>`;
+}
+
+/** `owner/repo · N skills`, or `M of N` when filtered; each skill as the CLI prints it, then the warnings. */
+function section({ repository, skills, warnings }: ScanResult, filter: string): string {
+  const shown = filter ? skills.filter((skill) => matchesSkill(skill, filter)) : skills;
+  const count = `${filter ? `${shown.length} of ` : ''}${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`;
+  const lines = ['<section class="result">', `<h2 class="repository">${escape(repository.id)} · ${count}</h2>`];
+  if (shown.length > 0) lines.push('<ul class="skills">', ...shown.flatMap((skill) => item(repository, skill)), '</ul>');
+  else lines.push('<p class="empty">No skill matches.</p>');
   if (warnings.length > 0) {
     lines.push('<ul class="warnings">', ...warnings.map((warning) => `<li>warning: ${escape(warning)}</li>`), '</ul>');
   }
@@ -78,6 +89,8 @@ label { grid-column: 1 / -1; font-weight: 600; }
 input { font: inherit; padding: .5rem .75rem; min-width: 0; }
 button { font: inherit; padding: .5rem 1.25rem; cursor: pointer; }
 .error { color: #b3261e; font-weight: 600; }
+.filter { margin-bottom: 0; }
+.empty { opacity: .7; }
 .repository { font-size: 1.1rem; }
 .skills, .warnings { list-style: none; padding: 0; }
 .skills li { padding: .5rem 0; border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent); }

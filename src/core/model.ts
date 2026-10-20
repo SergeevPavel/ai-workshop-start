@@ -39,6 +39,24 @@ export function sortSkills(skills: Skill[]): Skill[] {
   return [...skills].sort((a, b) => compare(a.name, b.name) || compare(a.path, b.path));
 }
 
+/**
+ * Fuzzy text matching: the query's characters appear in order in the skill's name or description,
+ * ignoring case and spaces. An empty query matches every skill.
+ */
+export function matchesSkill(skill: Skill, query: string): boolean {
+  const needle = query.replace(/\s+/g, '').toLowerCase();
+  const inOrder = (text: string) => {
+    let from = 0;
+    for (const char of needle) {
+      from = text.indexOf(char, from);
+      if (from < 0) return false;
+      from += char.length;
+    }
+    return true;
+  };
+  return inOrder(skill.name.toLowerCase()) || inOrder(skill.description.toLowerCase());
+}
+
 /** The description's first sentence, on one line: what the lists show. */
 export function firstSentence(text: string): string {
   const line = text.replace(/\s+/g, ' ').trim();

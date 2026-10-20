@@ -72,6 +72,67 @@ test('the same shape as the CLI: every skill sorted by name, the warnings under 
   assert.match(scanned.html, /<ul class="warnings">\n<li>warning: \.agents\/skills\/release-checklist\/SKILL\.md: malformed front matter: /);
 });
 
+const FIXTURE_LINK = (path: string) => `https://github.com/JetBrains/fixture/blob/${EXAMPLE_COMMIT}/${path}`;
+const FIXTURE_WARNING = /^warning: \.agents\/skills\/release-checklist\/SKILL\.md: malformed front matter: /;
+
+test('&filter=<text>: the skills whose name or description has the characters in order, M of N', async () => {
+  // "cmt": commits by name; code-style by "committing" in its description; not release-checklist.
+  const filtered = await get('/?repo=https://github.com/JetBrains/fixture&filter=cmt');
+  assert.equal(filtered.status, 200);
+  assert.match(filtered.html, /<form method="get" action="\/" class="filter">\n<input type="hidden" name="repo" value="https:\/\/github\.com\/JetBrains\/fixture">/);
+  assert.match(filtered.html, /<input id="filter" name="filter" type="search" value="cmt"/);
+  const lines = resultText(filtered.html);
+  assert.deepEqual(lines.slice(0, -1), [
+    'JetBrains/fixture · 2 of 3 skills',
+    "code-style — Follow the project's code style.",
+    FIXTURE_LINK('.github/skills/code-style/SKILL.md'),
+    'commits — Write commit messages the way this repository does.',
+    FIXTURE_LINK('.claude/skills/commits/SKILL.md'),
+  ]);
+  assert.match(lines.at(-1) ?? '', FIXTURE_WARNING);
+});
+
+test('the filter ignores case and spaces', async () => {
+  const filtered = await get('/?repo=https://github.com/JetBrains/fixture&filter=Release+Check');
+  assert.equal(filtered.status, 200);
+  const lines = resultText(filtered.html);
+  assert.deepEqual(lines.slice(0, -1), [
+    'JetBrains/fixture · 1 of 3 skills',
+    'release-checklist',
+    FIXTURE_LINK('.agents/skills/release-checklist/SKILL.md'),
+  ]);
+});
+
+test('nothing matches → "No skill matches.", the warnings stay', async () => {
+  const empty = await get('/?repo=https://github.com/JetBrains/fixture&filter=zzz');
+  assert.equal(empty.status, 200);
+  const lines = resultText(empty.html);
+  assert.deepEqual(lines.slice(0, -1), ['JetBrains/fixture · 0 of 3 skills', 'No skill matches.']);
+  assert.match(lines.at(-1) ?? '', FIXTURE_WARNING);
+  assert.match(empty.html, /<p class="empty">No skill matches\.<\/p>/);
+});
+
+test('an empty filter, or one without a result, changes nothing; the field keeps the text, escaped', async () => {
+  const unfiltered = await get('/?repo=https://github.com/JetBrains/fixture');
+  const blank = await get('/?repo=https://github.com/JetBrains/fixture&filter=+++');
+  assert.equal(blank.status, 200);
+  assert.deepEqual(resultText(blank.html), resultText(unfiltered.html));
+  assert.match(blank.html, /<input id="filter" name="filter" type="search" value=""/);
+
+  const home = await get('/?filter=cmt');
+  assert.equal(home.status, 200);
+  assert.doesNotMatch(home.html, /class="result"|class="filter"/);
+
+  const offline = await get('/?repo=https://github.com/JetBrains/not-answered&filter=cmt');
+  assert.equal(offline.status, 400);
+  assert.doesNotMatch(offline.html, /class="result"|class="filter"/);
+
+  const injected = await get(`/?repo=https://github.com/JetBrains/example&filter=${encodeURIComponent('<b>"x"</b>')}`);
+  assert.equal(injected.status, 200);
+  assert.doesNotMatch(injected.html, /<b>/);
+  assert.match(injected.html, /<input id="filter" name="filter" type="search" value="&lt;b&gt;&quot;x&quot;&lt;\/b&gt;"/);
+});
+
 test('unreachable repository, or not a GitHub URL → a clear message in the page, status 400', async () => {
   const offline = await get('/?repo=https://github.com/JetBrains/not-answered');
   assert.equal(offline.status, 400);
