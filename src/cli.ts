@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// The Node client: a GitHub repository through the GitHub API, or a local directory; stdout and
-// stderr. Nothing is stored.
+// The Node client: a GitHub repository or organization through the GitHub API, or a local
+// directory; stdout and stderr. Nothing is stored.
 import { run } from './commands.ts';
 import { openGitHub, parseGitHubUrl } from './core/github.ts';
 import { openDirectory } from './local.ts';

@@ -72,6 +72,18 @@ test('the same shape as the CLI: every skill sorted by name, the warnings under 
   assert.match(scanned.html, /<ul class="warnings">\n<li>warning: \.agents\/skills\/release-checklist\/SKILL\.md: malformed front matter: /);
 });
 
+test('?repo=<organization URL>: the same shape as the CLI, the skills grouped by repository', async () => {
+  const cli = await atlas(['scan', 'https://github.com/JetBrains']);
+  assert.equal(cli.code, 0, cli.stderr);
+  const scanned = await get('/?repo=https://github.com/JetBrains');
+  assert.equal(scanned.status, 200);
+  assert.match(scanned.html, /<title>JetBrains · Skill Atlas<\/title>/);
+  assert.match(scanned.html, /<h2 class="organization">JetBrains · 4 skills in 2 repositories<\/h2>/);
+  assert.match(scanned.html, /<h3 class="repository">JetBrains\/example · 1 skill<\/h3>/);
+  const lines = (text: string) => text.split('\n').map((line) => line.trim()).filter(Boolean);
+  assert.deepEqual(resultText(scanned.html), [...lines(cli.stdout), ...lines(cli.stderr)]);
+});
+
 test('unreachable repository, or not a GitHub URL → a clear message in the page, status 400', async () => {
   const offline = await get('/?repo=https://github.com/JetBrains/not-answered');
   assert.equal(offline.status, 400);
@@ -80,7 +92,7 @@ test('unreachable repository, or not a GitHub URL → a clear message in the pag
 
   const local = await get('/?repo=./fixture');
   assert.equal(local.status, 400);
-  assert.match(local.html, /<p class="error" role="alert">Not a GitHub repository URL: \.\/fixture<\/p>/);
+  assert.match(local.html, /<p class="error" role="alert">Not a GitHub URL: \.\/fixture<\/p>/);
 });
 
 test('what the user typed is escaped, in the field and in the message', async () => {
@@ -88,7 +100,7 @@ test('what the user typed is escaped, in the field and in the message', async ()
   assert.equal(injected.status, 400);
   assert.doesNotMatch(injected.html, /<script>/);
   assert.match(injected.html, /value="&lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt;"/);
-  assert.match(injected.html, /Not a GitHub repository URL: &lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt;<\/p>/);
+  assert.match(injected.html, /Not a GitHub URL: &lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt;<\/p>/);
 });
 
 test('another path → 404', async () => {

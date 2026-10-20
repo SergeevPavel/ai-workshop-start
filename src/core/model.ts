@@ -20,7 +20,7 @@ export type Skill = {
   description: string;
   /** The scanned commit, the one the link pins; empty for a local directory. */
   commit: string;
-  /** Other paths with identical SKILL.md content. */
+  /** Other paths with identical SKILL.md content; in another repository, `owner/repo:path`. */
   copies: string[];
 };
 
@@ -37,6 +37,11 @@ export function skillLink(repository: Repository, skill: Skill): string {
 export function sortSkills(skills: Skill[]): Skill[] {
   const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
   return [...skills].sort((a, b) => compare(a.name, b.name) || compare(a.path, b.path));
+}
+
+/** `1 skill`, `2 skills`, `2 repositories`: what the headings count. */
+export function count(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
 }
 
 /** The description's first sentence, on one line: what the lists show. */
