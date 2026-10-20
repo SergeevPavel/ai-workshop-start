@@ -6,7 +6,8 @@ description: Record a short video demo of a web view feature, with a GIF of it f
 # Demo video
 
 A demo is a video and an acceptance test. `record.ts` starts the web view, opens the page in a headless
-Chromium, runs a scenario, saves the video with a GIF of it and, at each `snapshot`, a golden screenshot.
+Chromium, runs a scenario and saves the video with a GIF of it; then runs it again without the video, as
+the tests do, and saves a golden screenshot at each `snapshot`.
 `npm test` runs every scenario again and compares the screenshots with the goldens, byte for byte.
 GitHub answers from `tests/helpers.ts` (`https://github.com/JetBrains/fixture`, `…/example`): offline, repeatable.
 

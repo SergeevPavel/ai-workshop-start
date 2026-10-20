@@ -1,7 +1,7 @@
 // Runs docs/demo/<feature>/scenario.ts against the web view, with GitHub answering from
-// tests/helpers.ts. Recording saves the video and the golden screenshots; checking compares the
-// screenshots with the goldens. Both MUST run in the Playwright image: fonts differ between
-// platforms, so goldens are Linux screenshots.
+// tests/helpers.ts. Recording saves the video; writing saves the golden screenshots; checking
+// compares the screenshots with the goldens. All MUST run in the Playwright image: fonts differ
+// between platforms, so goldens are Linux screenshots.
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -45,9 +45,17 @@ export function inDocker(args: string[], stdio: 'inherit' | 'pipe' = 'inherit') 
   return docker;
 }
 
-/** Records the video into `video` and writes the goldens; without `video`, checks against them, fast. */
-export async function runDemo(feature: string, { video, width = 1280, height = 720 }: { video?: string; width?: number; height?: number } = {}) {
+/**
+ * Records the video into `video`, or writes the goldens with `write`; with neither, checks against
+ * them, fast. The goldens MUST come from a run without the video, as the tests run the scenario:
+ * recording shifts the anti-aliasing of curved edges by a level here and there.
+ */
+export async function runDemo(
+  feature: string,
+  { video, write = false, width = 1280, height = 720 }: { video?: string; write?: boolean; width?: number; height?: number } = {},
+) {
   if (!inPlaywrightImage) throw new Error('Demos run in the Playwright image; see inDocker');
+  if (video && write) throw new Error('Record the video or write the goldens, not both');
   const folder = join(DEMOS, feature);
   const scenario: (demo: Demo) => Promise<void> = (await import(pathToFileURL(join(folder, 'scenario.ts')).href)).default;
   const web = await startWeb({ open });
@@ -110,7 +118,8 @@ export async function runDemo(feature: string, { video, width = 1280, height = 7
       snapshot: async (name) => {
         const shot = await page.screenshot({ animations: 'disabled', caret: 'hide', style: '#demo-cursor { display: none }' });
         const golden = join(folder, `${name}.png`);
-        if (video) return writeFileSync(golden, shot);
+        if (write) return writeFileSync(golden, shot);
+        if (video) return;
         if (!existsSync(golden)) throw new Error(`No golden ${relative(ROOT, golden)}; record the demo`);
         if (!shot.equals(readFileSync(golden))) {
           const actual = join(ROOT, 'test-results/demo', feature, `${name}.png`);
