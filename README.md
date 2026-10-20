@@ -1,6 +1,6 @@
 # Skill Atlas
 
-Every agent skill in a repository: `./skill-atlas scan` finds each `SKILL.md` and prints its name,
+Every agent skill in a repository: `./skill-atlas scan` finds each `SKILL.md` in an agent's skills folder and prints its name,
 description and link.
 
 ```console
