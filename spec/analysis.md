@@ -10,5 +10,6 @@ Skill: id = `repo:path`, name, description, commit
 - **GitHub API**, no clone; *under 5 s* for intellij-community
 - The name: front matter, else the directory
 - The link pins the *scanned commit*
+- Identical `SKILL.md` content → *one skill*: the first path links, the others are its **copies**
 - Malformed front matter → a *warning*, the scan goes on
 - Unreachable repository → a clear message, exit code 1
