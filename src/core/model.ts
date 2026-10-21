@@ -33,10 +33,19 @@ export function skillLink(repository: Repository, skill: Skill): string {
   return skill.commit ? `${repository.url}/blob/${skill.commit}/${path}` : `${repository.url}/${path}`;
 }
 
-/** By name, then by path: the same order everywhere, whatever the locale. */
+/** By code point: the same order everywhere, whatever the locale. */
+export function compare(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** By name, then by path. */
 export function sortSkills(skills: Skill[]): Skill[] {
-  const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
   return [...skills].sort((a, b) => compare(a.name, b.name) || compare(a.path, b.path));
+}
+
+/** `1 skill`, `2 skills`: a count with its noun. */
+export function count(n: number, singular: string, plural = `${singular}s`): string {
+  return `${n} ${n === 1 ? singular : plural}`;
 }
 
 /** The description's first sentence, on one line: what the lists show. */

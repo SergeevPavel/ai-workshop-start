@@ -1,7 +1,8 @@
 // The skill-atlas commands. The same code serves the Node CLI and the browser
 // terminal: everything that differs between them comes in through the context.
+import { byWords, type Clusterer } from './core/cluster.ts';
 import { AtlasError } from './core/errors.ts';
-import { firstSentence, skillLink, type Repository, type Skill } from './core/model.ts';
+import { count, firstSentence, skillLink, type Repository, type Skill } from './core/model.ts';
 import { scan, type Source } from './core/scan.ts';
 
 export type Context = {
@@ -10,12 +11,14 @@ export type Context = {
   print(text: string): void;
   /** Errors and warnings. */
   error(text: string): void;
+  /** Groups similar skills for `--cluster`; the core's word heuristic by default. */
+  cluster?: Clusterer;
 };
 
 const usage = `Usage: skill-atlas <command>
 
-  scan <GitHub URL | directory>   find every SKILL.md in a repository and print it
-  help                            show this help`;
+  scan [--cluster] <GitHub URL | directory>   find every SKILL.md in a repository and print it; --cluster groups similar skills
+  help                                        show this help`;
 
 /** Runs one command; returns its exit code. */
 export async function run(args: string[], context: Context): Promise<number> {
@@ -32,16 +35,26 @@ export async function run(args: string[], context: Context): Promise<number> {
   }
 }
 
+/** `<owner>/<repo> · N skills`, then the skills: in clusters with `--cluster`, each after a blank line. */
 async function scanCommand(args: string[], context: Context) {
-  if (args.length !== 1) throw new AtlasError('Usage: skill-atlas scan <GitHub URL | directory>');
-  const result = await scan(await context.open(args[0]));
-  printRepository(result.repository, result.skills, context);
+  const inputs = args.filter((arg) => arg !== '--cluster');
+  if (inputs.length !== 1) throw new AtlasError('Usage: skill-atlas scan [--cluster] <GitHub URL | directory>');
+  const result = await scan(await context.open(inputs[0]));
+  context.print(`${result.repository.id} · ${count(result.skills.length, 'skill')}`);
+  if (!args.includes('--cluster')) printSkills(result.repository, result.skills, context);
+  else {
+    const { clusters, alone } = await (context.cluster ?? byWords)(result.skills);
+    for (const { name, skills } of alone.length > 0 ? [...clusters, { name: 'on their own', skills: alone }] : clusters) {
+      context.print('');
+      context.print(`${name} · ${count(skills.length, 'skill')}`);
+      printSkills(result.repository, skills, context);
+    }
+  }
   for (const warning of result.warnings) context.error(`warning: ${warning}`);
 }
 
-/** `<owner>/<repo> · N skills`, then each skill's name, first sentence and link. */
-function printRepository(repository: Repository, skills: Skill[], { print }: Context) {
-  print(`${repository.id} · ${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`);
+/** Each skill's name, first sentence and link, then its copies. */
+function printSkills(repository: Repository, skills: Skill[], { print }: Context) {
   for (const skill of skills) {
     print(skill.description ? `${skill.name} — ${firstSentence(skill.description)}` : skill.name);
     print(`  ${skillLink(repository, skill)}`);

@@ -17,7 +17,7 @@ export default async ({ page, click, type, point, pause, snapshot }: Demo) => {
   // Words match on their own: "the" is in two descriptions; "the way" in one.
   await filter.fill('');
   await type(filter, 'the');
-  await point(page.locator('.count'));
+  await point(page.locator('.repository .count'));
   await snapshot('common-word');
   await pause(1500);
   await type(filter, ' way');

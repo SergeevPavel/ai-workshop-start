@@ -1,13 +1,16 @@
 // The web page: a field for a GitHub repository URL and, once scanned, the skills in the same
 // shape as the CLI prints them. Server-rendered; the only script is the live filter, which hides
-// list items and marks the matches in the page. Everything is escaped.
-import { firstSentence, skillLink, type Repository, type Skill } from './core/model.ts';
+// list items, marks the matches and moves the cards into their clusters, in the page. Everything
+// is escaped.
+import type { Clustering } from './core/cluster.ts';
+import { count, firstSentence, skillLink, type Repository, type Skill } from './core/model.ts';
 import type { ScanResult } from './core/scan.ts';
 
 export type PageModel = {
   /** What the field holds. */
   repo: string;
-  result?: ScanResult;
+  /** The scan and its clusters, computed once, for the checkbox. */
+  result?: ScanResult & { clusters: Clustering };
   error?: string;
 };
 
@@ -40,24 +43,30 @@ ${result ? '<script type="module" src="/filter.js"></script>' : ''}
 `;
 }
 
-/** The filter field, above the result; the script in /filter.js does the filtering, live. */
+/** The filter field and the cluster checkbox, above the result; the script in /filter.js does both, live. */
 const FILTER_FIELD = `<p class="filter">
 <label for="filter">Filter skills</label>
 <input id="filter" type="search" placeholder="words of the name or description, e.g. commit" autocomplete="off">
+<label class="toggle"><input id="cluster" type="checkbox"> Cluster similar skills</label>
 </p>`;
 
 /**
- * `owner/repo · N skills`, each skill as the CLI prints it, then the warnings. The count, the
- * hidden `No skill matches.` and the marks in each name and description are the filter script's.
+ * `owner/repo · N skills`, each skill as the CLI prints it, the clusters as hidden blocks with an
+ * empty list each, then the warnings. Each card names its cluster in `data-cluster`, none for the
+ * ones on their own; the script moves the cards, hides, counts and marks, and computes nothing.
  */
-function section({ repository, skills, warnings }: ScanResult): string {
-  const count = `${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`;
+function section({ repository, skills, warnings, clusters }: ScanResult & { clusters: Clustering }): string {
+  const named = new Map(clusters.clusters.flatMap(({ name, skills }) => skills.map((skill) => [skill.id, name] as const)));
+  const group = (name: string, size: number, attribute = '') =>
+    `<div class="cluster"${attribute} hidden><h3>${escape(name)} · <span class="count">${count(size, 'skill')}</span></h3><ul class="skills"></ul></div>`;
   const lines = [
     '<section class="result">',
-    `<h2 class="repository">${escape(repository.id)} · <span class="count">${count}</span></h2>`,
+    `<h2 class="repository">${escape(repository.id)} · <span class="count">${count(skills.length, 'skill')}</span></h2>`,
     '<ul class="skills">',
-    ...skills.flatMap((skill) => item(repository, skill)),
+    ...skills.flatMap((skill) => item(repository, skill, named.get(skill.id))),
     '</ul>',
+    ...clusters.clusters.map(({ name, skills }) => group(name, skills.length, ` data-cluster="${escape(name)}"`)),
+    ...(clusters.alone.length > 0 ? [group('on their own', clusters.alone.length)] : []),
     '<p class="empty" hidden>No skill matches.</p>',
   ];
   if (warnings.length > 0) {
@@ -67,9 +76,9 @@ function section({ repository, skills, warnings }: ScanResult): string {
   return lines.join('\n');
 }
 
-function item(repository: Repository, skill: Skill): string[] {
+function item(repository: Repository, skill: Skill, cluster?: string): string[] {
   const link = skillLink(repository, skill);
-  const lines = ['<li>'];
+  const lines = [cluster === undefined ? '<li>' : `<li data-cluster="${escape(cluster)}">`];
   const name = `<span class="name">${escape(skill.name)}</span>`;
   lines.push(skill.description ? `${name} — <span class="description">${escape(firstSentence(skill.description))}</span>` : name);
   lines.push(`<a class="link" href="${escape(link)}">${escape(link)}</a>`);
@@ -119,11 +128,17 @@ form input:focus-visible { position: relative; z-index: 1; }
 button { font: inherit; font-weight: 600; width: 6.5rem; padding: calc(.625rem + 1px) 0; margin-left: -1px; border: 0; border-radius: 0 .5rem .5rem 0; background: var(--accent); color: var(--on-accent); cursor: pointer; }
 button:hover { background: var(--accent-hover); }
 .error { margin: 1.5rem 0 0; padding: .75rem 1rem; color: var(--error); background: var(--error-bg); border-left: 3px solid var(--error); border-radius: 0 .5rem .5rem 0; font-weight: 500; overflow-wrap: anywhere; }
-.filter { display: grid; gap: .375rem; margin: 1.5rem 0 0; }
+.filter { display: grid; grid-template-columns: 1fr auto; gap: .375rem .875rem; align-items: center; margin: 1.5rem 0 0; }
+.filter > label[for] { grid-column: 1 / -1; }
+.toggle { display: flex; align-items: center; gap: .45rem; font-weight: 500; color: var(--text); white-space: nowrap; cursor: pointer; }
+.toggle input { width: 1.05rem; height: 1.05rem; margin: 0; padding: 0; border: 0; box-shadow: none; background: none; accent-color: var(--accent); }
+.toggle input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .result { margin-top: 2rem; }
 .repository { margin: 0 0 1rem; font-size: 1.125rem; font-weight: 600; }
 .count { display: inline-block; vertical-align: .1em; padding: .05rem .65rem; font-size: .8125rem; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg)); border-radius: 999px; }
 .skills, .warnings { list-style: none; padding: 0; margin: 0; display: grid; gap: .75rem; }
+.cluster { margin-top: 1.5rem; }
+.cluster h3 { margin: 0 0 .75rem; font-size: .9375rem; font-weight: 600; color: var(--muted); }
 .skills li { padding: 1rem 1.25rem; background: var(--surface); border: 1px solid var(--border); border-radius: .75rem; box-shadow: var(--shadow); }
 .name { padding: .1em .45em; font: 600 .875rem/1.4 var(--mono); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border-radius: .35rem; }
 .link, .copies { display: block; margin-top: .5rem; font-size: .8125rem; color: var(--muted); overflow-wrap: anywhere; }
