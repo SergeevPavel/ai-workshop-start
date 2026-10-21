@@ -24,13 +24,13 @@ Review the change, not the repository. Report findings; do not edit code unless 
 - Behaviour contradicts `spec/`, or behaviour changed without the matching `spec/` change.
 - A spec case without an integration test (`AGENTS.md`).
 - A test that hits the network instead of `atlas()` / the server and the recordings in `tests/helpers.ts`, or one that replicates the implementation.
-- `npm test` or `npm run typecheck` fails.
 - A defect you can trigger with a concrete input.
 
 **Minor.** Reported, never a red light on its own:
 
 - Single-use helper functions outside a logical unit; constants hoisted without a second user.
 - Comments that narrate, run long, or state obligations without RFC 2119 keywords.
+- Duplicated code that SHOULD be extracted into a shared helper.
 - Naming, wording, dead code.
 
 ## 4. Report
@@ -40,13 +40,11 @@ The verdict comes first, on its own line:
 - 🔴 **Red light**: at least one critical finding. Merge not recommended.
 - 🟢 **Green light**: no critical finding. Minor ones MAY remain.
 
-Then every finding as a comment, critical first:
+After the verdict, a summary of at most tree sentences.
 
-```
-<file>:<line> — <one-sentence defect>
-  Scenario: <input or state> → <wrong output or crash>
-  Fix: <short suggestion>
-```
+Then every finding, critical first:
 
-Then the checks run and their result. Say "No findings" if there are none.
-Only report what you verified. Mark a finding *uncertain* if you could not confirm it; an uncertain finding MUST NOT turn the light red.
+- A PR number: post each as an inline review comment on its line, in one review (`gh api repos/{owner}/{repo}/pulls/<n>/reviews` with a `comments` array).
+- Otherwise: list each in the chat as `<file>:<line> — <defect>`.
+
+Mark a finding *uncertain* if you could not confirm it; an uncertain finding MUST NOT turn the light red.
