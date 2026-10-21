@@ -33,13 +33,16 @@ export const DEMOS = join(ROOT, 'docs/demo');
 /** Inside the Playwright image, where the browsers live in /ms-playwright. */
 export const inPlaywrightImage = process.env.PLAYWRIGHT_BROWSERS_PATH === '/ms-playwright';
 
-/** Runs `node <args>` in the Playwright image matching the installed `playwright`, with the repository mounted. */
-export function inDocker(args: string[], stdio: 'inherit' | 'pipe' = 'inherit') {
+/**
+ * Runs `node <args>` in the Playwright image matching the installed `playwright`, with the repository
+ * mounted; `env` names the host variables the container gets, e.g. GITHUB_TOKEN.
+ */
+export function inDocker(args: string[], stdio: 'inherit' | 'pipe' = 'inherit', env: string[] = []) {
   const { version } = JSON.parse(readFileSync(join(ROOT, 'node_modules/playwright/package.json'), 'utf8'));
   const user = process.getuid && process.getgid ? ['--user', `${process.getuid()}:${process.getgid()}`, '-e', 'HOME=/tmp'] : [];
   const docker = spawnSync(
     'docker',
-    ['run', '--rm', '--init', ...user, '-v', `${ROOT}:/work`, '-w', '/work', `mcr.microsoft.com/playwright:v${version}-noble`, 'node', ...args],
+    ['run', '--rm', '--init', ...user, ...env.flatMap((name) => ['-e', name]), '-v', `${ROOT}:/work`, '-w', '/work', `mcr.microsoft.com/playwright:v${version}-noble`, 'node', ...args],
     { stdio, encoding: 'utf8' },
   );
   if (docker.error) throw new Error(`Docker is needed outside the Playwright image: ${docker.error.message}`);
@@ -49,16 +52,24 @@ export function inDocker(args: string[], stdio: 'inherit' | 'pipe' = 'inherit') 
 /**
  * Records the video into `video`, or writes the goldens with `write`; with neither, checks against
  * them, fast. The goldens come from a run without the video, as the tests run the scenario.
+ * `folder` holds the scenario and its files, `docs/demo/<feature>` by default; `open` answers for
+ * GitHub, from the recordings by default: the red-agent skill records a bug from `test-results`, live.
  */
 export async function runDemo(
   feature: string,
-  { video, write = false, width = 1280, height = 720 }: { video?: string; write?: boolean; width?: number; height?: number } = {},
+  {
+    video,
+    write = false,
+    width = 1280,
+    height = 720,
+    folder = join(DEMOS, feature),
+    open: openRepository = open,
+  }: { video?: string; write?: boolean; width?: number; height?: number; folder?: string; open?: typeof open } = {},
 ) {
   if (!inPlaywrightImage) throw new Error('Demos run in the Playwright image; see inDocker');
   if (video && write) throw new Error('Record the video or write the goldens, not both');
-  const folder = join(DEMOS, feature);
   const scenario: (demo: Demo) => Promise<void> = (await import(pathToFileURL(join(folder, 'scenario.ts')).href)).default;
-  const web = await startWeb({ open });
+  const web = await startWeb({ open: openRepository });
   const videos = mkdtempSync(join(tmpdir(), 'demo-video-'));
   const browser = await chromium.launch();
   try {
