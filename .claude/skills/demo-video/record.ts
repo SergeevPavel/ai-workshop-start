@@ -2,7 +2,7 @@
 // Records docs/demo/<feature>/scenario.ts: the video, a GIF of it for the pull request and the
 // golden screenshots, next to it. Records in the Playwright image, through Docker outside it;
 // converts on the host. The goldens come from a second run, without the video, as the tests run
-// the scenario; see runDemo.
+// the scenario, with no cursor dot in the page; see runDemo.
 //
 //   node .claude/skills/demo-video/record.ts <feature> [--size 1280x720]
 import { spawnSync } from 'node:child_process';
