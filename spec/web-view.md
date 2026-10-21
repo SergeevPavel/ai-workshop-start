@@ -14,18 +14,27 @@ Prints the result **at once**; *nothing is stored*. `GITHUB_TOKEN`, optional: as
   ignoring case; every occurrence is **highlighted**; the heading reads `owner/repo · M of N skills`
 - Nothing matches → `No skill matches.`; the warnings stay under the list either way
 - An empty field shows the whole list again, `N skills`, nothing highlighted
+## Clusters
+- Beside the Filter field, a **Cluster similar skills** checkbox, *off*: the list, by name. Checked → the skills
+  regroup **live**, in the page, under a heading per cluster, `<word> · N skills` (`analysis.md § Clusters`), then
+  `on their own · N skills` for the rest; unchecked → the list by name again
+- The clusters come with the scan, computed *once* by the core and carried in the page: the checkbox
+  never recomputes nor fetches; the headings read as the CLI prints them
+- With the filter: a skill hidden by the filter stays hidden in its cluster; a cluster with no shown skill is
+  hidden, heading and all; `M of N skills` and `No skill matches.` as without clusters
 ## Look
 - One **centered column** on a *tinted* page; the field and the *Scan* button are **one bar**, the button in
   the one **accent** colour, which also marks the focus and the heading's **count**, a *badge*
 - Each skill is a **card**: the name as a *monospace chip*, the description beside it, the link and
   `also in` *muted* under them; the highlights are *amber*
+- A cluster heading is *muted*, its count the same *badge*; the checkbox sits at the end of the filter bar
 - The error and the warnings are **callouts**, *red* and *amber*; `No skill matches.` is a *dashed* card
 - **Light and dark** follow the system
 - The page is **self-contained**: its stylesheet is *inline*; no external stylesheet, web font or image
 - The goldens of the demos in `docs/demo` are the acceptance test for the look; `web-view-look` shows it
   light, dark and with the error
 ## Details
-- Server-rendered HTML; the only client script is the filter, `/filter.js`, which touches nothing
-  but the list; local directories are *not* served
+- Server-rendered HTML; the only client script is `/filter.js`, the filter and the cluster checkbox, which
+  touches nothing but the list; local directories are *not* served
 - Unreachable repository, or not a GitHub URL → a clear message in the page, status **400**
 - Everything from the user or GitHub is HTML-escaped

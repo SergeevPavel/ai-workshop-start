@@ -13,7 +13,10 @@ build-tools-bump-gradle-api — Bumps the Gradle API version that Kotlin Gradle 
 …
 ```
 
-The same in a browser: `npm run web`, then open <http://127.0.0.1:3000/> and paste a repository URL.
+`scan --cluster` groups similar skills, by the words of their names and descriptions.
+
+The same in a browser: `npm run web`, then open <http://127.0.0.1:3000/> and paste a repository URL;
+a checkbox clusters the skills.
 
 Set `GITHUB_TOKEN` for a higher GitHub rate limit. `npm test` runs the tests.
 

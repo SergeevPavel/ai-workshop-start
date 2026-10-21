@@ -7,7 +7,7 @@ export default async ({ page, click, type, point, pause, snapshot }: Demo) => {
   await type(page.getByLabel('GitHub repository URL'), 'https://github.com/JetBrains/fixture');
   await click(page.getByRole('button', { name: 'Scan' }));
   await page.locator('.result, .error').first().waitFor();
-  await point(page.locator('.count'));
+  await point(page.locator('.repository .count'));
   await snapshot('result');
   await pause(1500);
   await type(page.getByLabel('Filter skills'), 'style');

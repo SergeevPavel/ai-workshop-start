@@ -76,35 +76,68 @@ test('the same shape as the CLI: every skill sorted by name, the warnings under 
 });
 
 /**
- * The elements the filter script touches, read off the served HTML: enough of a document to run
- * the real script in Node, with no browser. Each skill's name and description keep the HTML the
- * script writes into them.
+ * The elements the script touches, read off the served HTML: enough of a document to run the real
+ * script in Node, with no browser. Each skill's name and description keep the HTML the script
+ * writes into them; a list knows what was appended to it, and a node appended leaves its old list.
  */
 function document(html: string) {
   type Element = { textContent: string; innerHTML: string };
-  const items = [...html.matchAll(/<li>\n<span class="name">([^<]*)<\/span>(?: — <span class="description">([^<]*)<\/span>)?/g)].map(
-    ([, name, description]) => {
+  type Item = { hidden: boolean; dataset: { cluster?: string }; elements: Record<string, Element>; querySelector(selector: string): Element | null };
+  const lists: Item[][] = [];
+  const list = () => {
+    const children: Item[] = [];
+    lists.push(children);
+    return {
+      children,
+      append: (...nodes: Item[]) => {
+        for (const siblings of lists) for (const node of nodes) siblings.includes(node) && siblings.splice(siblings.indexOf(node), 1);
+        children.push(...nodes);
+      },
+    };
+  };
+  const items: Item[] = [...html.matchAll(/<li(?: data-cluster="([^"]*)")?>\n<span class="name">([^<]*)<\/span>(?: — <span class="description">([^<]*)<\/span>)?/g)].map(
+    ([, cluster, name, description]) => {
       const elements: Record<string, Element> = { '.name': { textContent: decode(name), innerHTML: name } };
       if (description !== undefined) elements['.description'] = { textContent: decode(description), innerHTML: description };
-      return { hidden: false, elements, querySelector: (selector: string) => elements[selector] ?? null };
+      return { hidden: false, dataset: { cluster: cluster === undefined ? undefined : decode(cluster) }, elements, querySelector: (selector: string) => elements[selector] ?? null };
+    },
+  );
+  const flat = list();
+  flat.append(...items);
+  const sections = [...html.matchAll(/<div class="cluster"(?: data-cluster="([^"]*)")? hidden><h3>([^<]*)<span class="count">([^<]*)<\/span><\/h3>/g)].map(
+    ([, cluster, heading, count]) => {
+      const skills = list();
+      return {
+        hidden: true,
+        dataset: { cluster: cluster === undefined ? undefined : decode(cluster) },
+        heading: decode(heading + count),
+        skills,
+        querySelector: (selector: string) => (selector === 'ul' ? skills : null),
+      };
     },
   );
   const count = { textContent: decode(/<span class="count">([^<]*)<\/span>/.exec(html)?.[1] ?? '') };
   const empty = { hidden: /<p class="empty" hidden>/.test(html) };
   const listeners: Record<string, () => void> = {};
   const field = { value: '', addEventListener: (type: string, listener: () => void) => void (listeners[type] = listener) };
+  const toggle = { checked: false, addEventListener: (type: string, listener: () => void) => void (listeners[type] = listener) };
   const root = {
-    getElementById: (id: string) => (id === 'filter' ? field : null),
-    querySelector: (selector: string) => ({ '.count': count, '.empty': empty })[selector] ?? null,
-    querySelectorAll: (selector: string) => (selector === '.skills > li' ? items : []),
+    getElementById: (id: string) => ({ filter: field, cluster: toggle })[id] ?? null,
+    querySelector: (selector: string) => ({ '.repository .count': count, '.empty': empty, '.skills': flat })[selector] ?? null,
+    querySelectorAll: (selector: string) => ({ '.skills > li': items, '.cluster': sections })[selector] ?? [],
   };
   install(root);
+  const names = (nodes: Item[]) => nodes.filter((item) => !item.hidden).map((item) => item.elements['.name'].textContent);
   return {
     type(text: string) {
       field.value = text;
       listeners.input?.();
     },
-    shown: () => items.filter((item) => !item.hidden).map((item) => item.elements['.name'].textContent),
+    cluster(checked: boolean) {
+      toggle.checked = checked;
+      listeners.change?.();
+    },
+    shown: () => names(items),
     /** The shown skills as the page displays them, `<mark>` and all: `name — description`. */
     marked: () =>
       items
@@ -112,13 +145,20 @@ function document(html: string) {
         .map((item) => [item.elements['.name'], item.elements['.description']].filter(Boolean).map((element) => element.innerHTML).join(' — ')),
     count: () => count.textContent,
     message: () => !empty.hidden,
+    /** The skills shown in the flat list, by name. */
+    listed: () => names(flat.children),
+    /** Each shown cluster: its heading and the skills shown in it. */
+    groups: () => sections.filter((section) => !section.hidden).map((section) => [section.heading, names(section.skills.children)]),
   };
 }
 
 test('a Filter field above the list and its script; the repository is fetched once, by the scan', async () => {
   const scanned = await get('/?repo=https://github.com/JetBrains/fixture');
   assert.equal(scanned.status, 200);
-  assert.match(scanned.html, /<\/form>\n+<p class="filter">\n<label for="filter">Filter skills<\/label>\n<input id="filter" type="search"[^>]*>\n<\/p>\n<section class="result">/);
+  assert.match(
+    scanned.html,
+    /<\/form>\n+<p class="filter">\n<label for="filter">Filter skills<\/label>\n<input id="filter" type="search"[^>]*>\n<label class="toggle"><input id="cluster" type="checkbox"> Cluster similar skills<\/label>\n<\/p>\n<section class="result">/,
+  );
   assert.match(scanned.html, /<script type="module" src="\/filter\.js"><\/script>/);
   const script = await get('/filter.js');
   assert.equal(script.status, 200);
@@ -169,7 +209,7 @@ test('the filter ignores case; the highlight keeps the text as written', async (
 
 test('nothing matches → "No skill matches.", the warnings stay', async () => {
   const scanned = await get('/?repo=https://github.com/JetBrains/fixture');
-  assert.match(scanned.html, /<\/ul>\n<p class="empty" hidden>No skill matches\.<\/p>\n<ul class="warnings">\n<li>warning: /);
+  assert.match(scanned.html, /<\/ul>\n(?:<div class="cluster"[^\n]*\n)*<p class="empty" hidden>No skill matches\.<\/p>\n<ul class="warnings">\n<li>warning: /);
   const page = document(scanned.html);
   assert.equal(page.message(), false);
   page.type('zzz');
@@ -186,6 +226,79 @@ test('an empty field shows the whole list again, N skills, nothing highlighted',
   assert.equal(page.count(), '3 skills');
   assert.equal(page.message(), false);
   assert.doesNotMatch(page.marked().join('\n'), /<mark>/);
+});
+
+test('the clusters come with the scan, carried in the page, hidden; the headings read as the CLI prints them', async () => {
+  const scanned = await get('/?repo=https://github.com/JetBrains/fixture');
+  assert.match(scanned.html, /<li data-cluster="commit">\n<span class="name">code-style<\/span>/);
+  assert.match(scanned.html, /<li data-cluster="commit">\n<span class="name">commits<\/span>/);
+  assert.match(scanned.html, /<li>\n<span class="name">release-checklist<\/span>/);
+  assert.match(
+    scanned.html,
+    /<\/ul>\n<div class="cluster" data-cluster="commit" hidden><h3>commit · <span class="count">2 skills<\/span><\/h3><ul class="skills"><\/ul><\/div>\n<div class="cluster" hidden><h3>on their own · <span class="count">1 skill<\/span><\/h3><ul class="skills"><\/ul><\/div>\n<p class="empty" hidden>/,
+  );
+  const cli = await atlas(['scan', '--cluster', 'https://github.com/JetBrains/fixture']);
+  const headings = [...scanned.html.matchAll(/<div class="cluster"[^>]*><h3>(.*?)<\/h3>/g)].map(([, heading]) => decode(heading.replace(/<[^>]*>/g, '')));
+  assert.deepEqual(headings, cli.stdout.split('\n').filter((line) => / · \d+ skills?$/.test(line)).slice(1));
+  // Nothing of it in the page without clusters, nor in the home page.
+  const one = await get('/?repo=github.com/JetBrains/example');
+  assert.doesNotMatch(one.html, /data-cluster/);
+  assert.match(one.html, /<div class="cluster" hidden><h3>on their own · <span class="count">1 skill<\/span>/);
+  assert.doesNotMatch((await get('/')).html, /class="cluster"|id="cluster"/);
+});
+
+test('the clusterer is pluggable in the web view too: another one, its headings in the page', async () => {
+  const other = await startWeb({
+    open: (input) => openGitHub(input, { fetch: github, token: 'test' }),
+    cluster: (skills) => ({ clusters: [{ name: 'everything', skills }], alone: [] }),
+  });
+  try {
+    const html = await (await fetch(new URL('/?repo=https://github.com/JetBrains/fixture', other.url))).text();
+    assert.match(html, /<div class="cluster" data-cluster="everything" hidden><h3>everything · <span class="count">3 skills<\/span>/);
+    assert.doesNotMatch(html, /on their own/);
+    assert.equal((html.match(/<li data-cluster="everything">/g) ?? []).length, 3);
+  } finally {
+    await other.close();
+  }
+});
+
+test('Cluster similar skills: checked, the skills regroup live under a heading per cluster; unchecked, the list by name again', async () => {
+  const page = document((await get('/?repo=https://github.com/JetBrains/fixture')).html);
+  assert.deepEqual(page.listed(), ['code-style', 'commits', 'release-checklist']);
+  assert.deepEqual(page.groups(), []);
+  page.cluster(true);
+  assert.deepEqual(page.listed(), []);
+  assert.deepEqual(page.groups(), [
+    ['commit · 2 skills', ['code-style', 'commits']],
+    ['on their own · 1 skill', ['release-checklist']],
+  ]);
+  assert.equal(page.count(), '3 skills');
+  page.cluster(false);
+  assert.deepEqual(page.listed(), ['code-style', 'commits', 'release-checklist']);
+  assert.deepEqual(page.groups(), []);
+});
+
+test('the filter and the clusters combine: a hidden skill stays hidden, a cluster with no shown skill is hidden, M of N as ever', async () => {
+  const page = document((await get('/?repo=https://github.com/JetBrains/fixture')).html);
+  page.cluster(true);
+  page.type('release');
+  assert.deepEqual(page.groups(), [['on their own · 1 skill', ['release-checklist']]]);
+  assert.equal(page.count(), '1 of 3 skills');
+  assert.deepEqual(page.marked(), ['<mark>release</mark>-checklist']);
+  page.type('zzz');
+  assert.deepEqual(page.groups(), []);
+  assert.equal(page.message(), true);
+  page.type('');
+  assert.deepEqual(page.groups(), [
+    ['commit · 2 skills', ['code-style', 'commits']],
+    ['on their own · 1 skill', ['release-checklist']],
+  ]);
+  // The filter typed first, then the checkbox: the same.
+  const other = document((await get('/?repo=https://github.com/JetBrains/fixture')).html);
+  other.type('style');
+  other.cluster(true);
+  assert.deepEqual(other.groups(), [['commit · 2 skills', ['code-style']]]);
+  assert.equal(other.count(), '1 of 3 skills');
 });
 
 test('the page is self-contained: an inline stylesheet, no external stylesheet, web font or image', async () => {
