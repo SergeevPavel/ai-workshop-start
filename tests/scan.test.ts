@@ -38,22 +38,25 @@ test('scan prints the repository, then each skill with its first sentence and pi
   );
 });
 
-test('./fixture: every skill, sorted by name, linked to its file, identical copies folded, with a warning for the malformed one', () => {
+test('./fixture: every skill in an agent folder at any depth, sorted by name, linked to its file, identical copies folded, with a warning for the malformed one', () => {
   const root = pathToFileURL(FIXTURE).href;
   assert.equal(fixture.code, 0);
   assert.equal(
     fixture.stdout,
     [
-      'fixture · 3 skills',
+      'fixture · 4 skills',
       "code-style — Follow the project's code style.",
       `  ${root}/.github/skills/code-style/SKILL.md`,
       'commits — Write commit messages the way this repository does.',
       `  ${root}/.claude/skills/commits/SKILL.md`,
       '  also in .github/skills/commits/SKILL.md',
+      'refunds — Issue refunds the way the billing service does.',
+      `  ${root}/services/billing/.agent/skills/refunds/SKILL.md`,
       'release-checklist',
       `  ${root}/.agents/skills/release-checklist/SKILL.md`,
     ].join('\n'),
   );
+  assert.doesNotMatch(fixture.stdout, /docs\/skills/);
   assert.match(fixture.stderr, /^warning: \.agents\/skills\/release-checklist\/SKILL\.md: malformed front matter: /);
 });
 
